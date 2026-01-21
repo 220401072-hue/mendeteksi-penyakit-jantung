@@ -9,12 +9,12 @@ import os
 # Konfigurasi Halaman
 st.set_page_config(
     page_title="Prediksi Kesehatan Jantung",
-    page_icon="❤️",
+    page_icon="🫀",
     layout="centered"
 )
 
 # Judul dan Deskripsi
-st.title("❤️ Smart Heart Disease Prediction")
+st.title("🫀 Smart Heart Disease Prediction")
 st.info("Masukkan data klinis pasien di bawah ini untuk mendapatkan hasil prediksi.")
 
 # =========================================================================
@@ -123,4 +123,5 @@ if model and scaler and model_columns:
                 
         except Exception as e:
             st.error(f"Terjadi kesalahan saat memproses data: {e}")
+
 
