@@ -1,94 +1,126 @@
-import os
-from flask import Flask, request, jsonify
+import streamlit as st
 import pandas as pd
 import tensorflow as tf
 import joblib
 import pickle
 import numpy as np
+import os
 
-# Inisialisasi Aplikasi Flask
-app = Flask(__name__)
+# Konfigurasi Halaman
+st.set_page_config(
+    page_title="Prediksi Kesehatan Jantung",
+    page_icon="🫀",
+    layout="centered"
+)
 
-# =========================================================================
-# BAGIAN INI YANG MEMPERBAIKI ERROR "FILE NOT FOUND"
-# =========================================================================
-# Mendapatkan lokasi folder tempat file api.py ini berada
-base_dir = os.path.dirname(os.path.abspath(__file__))
-
-print(f"📂 Folder Proyek terdeteksi di: {base_dir}")
-
-# Menggabungkan path folder dengan nama file agar selalu akurat
-model_path = os.path.join(base_dir, 'heart_disease_model.h5')
-scaler_path = os.path.join(base_dir, 'scaler.pkl')
-columns_path = os.path.join(base_dir, 'model_columns.pkl')
+# Judul dan Deskripsi
+st.title("🫀 Smart Heart Disease Prediction")
+st.write("Aplikasi ini menggunakan Deep Learning (ANN) untuk memprediksi risiko penyakit jantung.")
+st.info("Masukkan data klinis pasien di bawah ini untuk mendapatkan hasil prediksi.")
 
 # =========================================================================
-# 1. LOAD MODEL & ASSETS
+# 1. LOAD MODEL & ASSETS (Menggunakan Cache agar cepat)
 # =========================================================================
-print("⏳ Sedang memuat model Deep Learning...")
-
-try:
-    # Cek apakah file benar-benar ada sebelum di-load
-    if not os.path.exists(model_path):
-        raise FileNotFoundError(f"File model tidak ditemukan di: {model_path}")
-
-    model = tf.keras.models.load_model(model_path)
-    scaler = joblib.load(scaler_path)
-    with open(columns_path, 'rb') as f:
-        model_columns = pickle.load(f)
-        
-    print("✅ SUKSES: Model siap digunakan!")
-
-except Exception as e:
-    print("\n❌ ERROR FATAL saat memuat model:")
-    print(e)
-    print("Pastikan file .h5, .pkl ada di folder yang sama dengan api.py!")
-    exit() # Berhenti jika model gagal load
-
-# =========================================================================
-# 2. ENDPOINT PREDIKSI
-# =========================================================================
-@app.route('/predict', methods=['POST'])
-def predict():
+@st.cache_resource
+def load_assets():
     try:
-        # Terima data JSON dari PHP
-        json_data = request.json
+        # Load Model H5
+        model = tf.keras.models.load_model('heart_disease_model.h5')
         
-        # Buat DataFrame
-        input_df = pd.DataFrame([json_data])
+        # Load Scaler
+        scaler = joblib.load('scaler.pkl')
         
-        # Konversi string "true"/"false" dari PHP menjadi boolean Python
-        bool_cols = ['fbs', 'exang']
-        for col in bool_cols:
-            if col in input_df.columns:
-                input_df[col] = input_df[col].apply(lambda x: True if str(x).lower() == 'true' else False)
-
-        # One-Hot Encoding
-        df_processed = pd.get_dummies(input_df)
-        
-        # Penyesuaian Kolom (Reindexing) agar sesuai format Training
-        df_final = df_processed.reindex(columns=model_columns, fill_value=0)
-        
-        # Scaling Data
-        X_scaled = scaler.transform(df_final)
-        
-        # Prediksi Neural Network
-        prediction_prob = model.predict(X_scaled)[0][0]
-        prediction_prob = float(prediction_prob) # Ubah ke float biasa
-        
-        # Logika Hasil
-        result = {
-            "prediction": 1 if prediction_prob > 0.5 else 0,
-            "confidence": prediction_prob if prediction_prob > 0.5 else (1 - prediction_prob),
-            "status": "success"
-        }
-        
-        return jsonify(result)
-
+        # Load Columns (untuk urutan fitur one-hot encoding)
+        with open('model_columns.pkl', 'rb') as f:
+            model_columns = pickle.load(f)
+            
+        return model, scaler, model_columns
     except Exception as e:
-        # Kirim pesan error ke PHP jika ada masalah
-        return jsonify({"status": "error", "message": str(e)})
+        st.error(f"Error loading files: {e}")
+        return None, None, None
 
-if __name__ == '__main__':
-    # Menjalankan server di Port 5000
-    app.run(port=5000, debug=True)
+model, scaler, model_columns = load_assets()
+
+# =========================================================================
+# 2. FORM INPUT DATA (Pengganti index.php)
+# =========================================================================
+if model and scaler and model_columns:
+    with st.form("prediction_form"):
+        st.subheader("Data Pasien")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            age = st.number_input("Usia (Age)", min_value=1, max_value=120, value=50)
+            sex = st.selectbox("Jenis Kelamin", ["Male", "Female"])
+            cp = st.selectbox("Tipe Nyeri Dada (Chest Pain)", 
+                              ["typical angina", "atypical angina", "non-anginal", "asymptomatic"])
+            trestbps = st.number_input("Tekanan Darah (mm Hg)", min_value=50, max_value=250, value=120)
+            chol = st.number_input("Kolesterol (mg/dl)", min_value=100, max_value=600, value=200)
+            fbs = st.checkbox("Gula Darah Puasa > 120 mg/dl?")
+            
+        with col2:
+            restecg = st.selectbox("Hasil EKG Istirahat", 
+                                   ["normal", "lv hypertrophy", "st-t abnormality"])
+            thalch = st.number_input("Detak Jantung Maksimum", min_value=50, max_value=250, value=150)
+            exang = st.checkbox("Nyeri Dada Akibat Olahraga (Exang)?")
+            oldpeak = st.number_input("ST Depression (Oldpeak)", value=0.0, format="%.1f")
+            slope = st.selectbox("Slope ST Segment", ["upsloping", "flat", "downsloping"])
+            ca = st.number_input("Jumlah Pembuluh Utama (0-3)", min_value=0, max_value=3, value=0)
+            thal = st.selectbox("Thalassemia", ["normal", "fixed defect", "reversable defect"])
+
+        submit_btn = st.form_submit_button("Prediksi Sekarang")
+
+    # =========================================================================
+    # 3. LOGIKA PREDIKSI (Diadaptasi dari api.py)
+    # =========================================================================
+    if submit_btn:
+        try:
+            # 1. Siapkan data mentah dictionary
+            input_data = {
+                'age': age,
+                'sex': sex,
+                'dataset': 'Cleveland', # Default value as placeholder if needed
+                'cp': cp,
+                'trestbps': trestbps,
+                'chol': chol,
+                'fbs': fbs, # Streamlit checkbox returns boolean True/False directly
+                'restecg': restecg,
+                'thalch': thalch,
+                'exang': exang,
+                'oldpeak': oldpeak,
+                'slope': slope,
+                'ca': str(ca), # Ensure consistent type
+                'thal': thal
+            }
+            
+            # 2. Buat DataFrame
+            input_df = pd.DataFrame([input_data])
+            
+            # 3. One-Hot Encoding
+            df_processed = pd.get_dummies(input_df)
+            
+            # 4. Reindexing (PENTING: Agar kolom sesuai dengan saat training)
+            # Isi kolom yang hilang dengan 0
+            df_final = df_processed.reindex(columns=model_columns, fill_value=0)
+            
+            # 5. Scaling
+            X_scaled = scaler.transform(df_final)
+            
+            # 6. Prediksi
+            prediction_prob = model.predict(X_scaled)[0][0]
+            prediction_prob = float(prediction_prob)
+            
+            # 7. Tampilkan Hasil
+            st.markdown("---")
+            if prediction_prob > 0.5:
+                st.error(f"⚠️ **Risiko Tinggi Terdeteksi**")
+                st.write(f"Probabilitas Penyakit Jantung: **{prediction_prob*100:.2f}%**")
+                st.warning("Saran: Segera konsultasikan dengan dokter kardiologi.")
+            else:
+                st.success(f"✅ **Kondisi Jantung Tampak Sehat**")
+                st.write(f"Probabilitas Penyakit Jantung: **{prediction_prob*100:.2f}%**")
+                st.info("Saran: Tetap jaga pola hidup sehat dan olahraga teratur.")
+                
+        except Exception as e:
+            st.error(f"Terjadi kesalahan saat memproses data: {e}")
