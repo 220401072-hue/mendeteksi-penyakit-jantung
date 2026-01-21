@@ -15,7 +15,6 @@ st.set_page_config(
 
 # Judul dan Deskripsi
 st.title("❤️ Smart Heart Disease Prediction")
-st.write("Aplikasi ini menggunakan Deep Learning (ANN) untuk memprediksi risiko penyakit jantung.")
 st.info("Masukkan data klinis pasien di bawah ini untuk mendapatkan hasil prediksi.")
 
 # =========================================================================
@@ -124,3 +123,4 @@ if model and scaler and model_columns:
                 
         except Exception as e:
             st.error(f"Terjadi kesalahan saat memproses data: {e}")
+
